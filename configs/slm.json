@@ -1,0 +1,23 @@
+{
+  "enabled": true,
+  "base_url": "http://localhost:11434/v1",
+  "model": "qwen3:4b-instruct",
+  "api_key_env": "CDACDM_SLM_API_KEY",
+  "temperature": 0.2,
+  "top_p": 0.9,
+  "max_tokens": 700,
+  "timeout_sec": 120,
+  "connect_timeout_sec": 5,
+  "max_retries": 2,
+  "prompt_version": "narrative-v2",
+  "max_student_concepts": 12,
+  "max_class_concepts": 11,
+  "max_gaps": 5,
+  "max_recommendations": 5,
+  "max_examples": 1,
+  "examples_path": "configs/narrative_examples.jsonl",
+  "cache_dir": "artifacts/reports/cache",
+  "cache_ttl_hours": 168,
+  "log_path": "artifacts/reports/narrative_log.jsonl",
+  "allow_remote": false
+}

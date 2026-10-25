@@ -1,0 +1,21 @@
+{
+  "_note": "PHASE 2 SCAFFOLD (not used by the app). QLoRA recipe for scripts/train_lora.py; run on a GPU machine/Colab only after teachers have edited the dataset.",
+  "base_model": "Qwen/Qwen3-4B-Instruct-2507",
+  "dataset": "artifacts/reports/narrative_dataset_EDITED.jsonl",
+  "output_dir": "artifacts/reports/lora_qwen3_4b_narrative",
+  "backend": "unsloth",
+  "load_in_4bit": true,
+  "max_seq_length": 4096,
+  "lora_r": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05,
+  "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+  "learning_rate": 0.0002,
+  "num_train_epochs": 2,
+  "per_device_train_batch_size": 2,
+  "gradient_accumulation_steps": 8,
+  "warmup_ratio": 0.05,
+  "eval_fraction": 0.1,
+  "seed": 0,
+  "train_on_responses_only": true
+}
