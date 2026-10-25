@@ -24,7 +24,7 @@ finalIL/
 ├── cda_cdm_model_training.ipynb         # notebook training & evaluasi (dijalankan, berisi output)
 ├── app.py                               # aplikasi Streamlit
 ├── requirements.txt
-├── README.md / README_streamlit.md / README_slm.md
+├── README.md / README_pdina.md / README_streamlit.md / README_slm.md
 ├── configs/
 │   ├── experiment.json                  # path, grid hyperparameter, aturan evaluasi/diagnosis/assessment
 │   ├── slm.json                         # lapisan naratif opsional: server/model SLM lokal, batas, cache, log
@@ -265,6 +265,9 @@ ke template. `qwen3:4b-instruct` adalah model terkecil yang lolos dengan angka b
   Co-ordinates* hanya 2 soal → keterbatasan diagnosis.
 
 ## Model
+
+> Penjelasan lengkap P-DINA (intuisi, matematika, training variational EM, seleksi hyperparameter, kebijakan diagnosis,
+> evaluasi, cara pakai, kapan training ulang, perbandingan dengan deep learning) ada di **`README_pdina.md`**.
 
 Persamaan lengkap ada di docstring `cdacdm/models.py` dan notebook. Ringkasnya:
 $P(X_{ij}=1\mid\alpha)=(1-s_j)^{\eta_{ij}}g_j^{1-\eta_{ij}}$, $\eta_{ij}=\prod_k\alpha_{ik}^{q_{jk}}$; keluarga variasional
