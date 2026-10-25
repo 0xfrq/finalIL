@@ -3,9 +3,14 @@
 Implementasi end-to-end yang dapat dijalankan ulang: audit artefak data preparation → Q-matrix & pemetaan konsep target →
 **probabilistic DINA (variational EM)** + baseline yang terikat Q-matrix → pemilihan hyperparameter & kebijakan diagnosis di
 validation → evaluasi **satu kali** di test → CDA (form tetap, parallel forms, adaptif) → profil mastery, learning gap,
-rekomendasi intervensi → analisis pre-test/post-test → aplikasi Streamlit (`README_streamlit.md`).
-Opsional: laporan naratif berbahasa Indonesia dari SLM lokal (Qwen3-4B-Instruct-2507 via Ollama) yang hanya
-mengomunikasikan fakta diagnosis dan selalu divalidasi — lihat `README_slm.md`.
+rekomendasi intervensi → analisis pre-test/post-test → aplikasi Streamlit (`README_streamlit.md`) → **laporan naratif
+opsional** berbahasa Indonesia untuk guru dan siswa, ditulis oleh *small language model* (SLM) lokal
+**Qwen3-4B-Instruct-2507** via Ollama.
+
+> **Peran SLM.** SLM hanya **mengomunikasikan** hasil diagnosis P-DINA dalam bahasa sehari-hari. SLM tidak menghitung,
+> mengubah, atau memprediksi mastery, learning gap, rekomendasi, maupun metrik apa pun. Setiap teks SLM diperiksa validator
+> (angka harus berasal dari hasil diagnosis); bila gagal, aplikasi menampilkan laporan template deterministik. Aplikasi tetap
+> berjalan penuh tanpa SLM. Lihat bagian [Lapisan naratif (SLM)](#lapisan-naratif-slm-lokal-opsional) dan `README_slm.md`.
 
 > **Status data.** EEDI Task 3/4 dipakai sebagai **dataset pengembangan dan evaluasi awal**, bukan data pre/post kelas penelitian.
 > Populasinya mayoritas siswa sekolah menengah pertama di UK (hanya ±5–6 siswa berusia 16–17 tahun menurut proxy metadata), dan
@@ -273,6 +278,48 @@ Kebijakan diagnosis (dari validation): τ via log-likelihood held-out prediksi D
 n_min dan δ via konsistensi klasifikasi split-half ≥ 0,85. Label: `mastered`, `not_mastered` (= learning gap), `uncertain`,
 `insufficient_evidence` (bukan gap — butuh data). Form CDA otomatis memberi tiap konsep ≥ n_min soal.
 
+## Lapisan naratif (SLM lokal, opsional)
+
+**Tujuan.** Tabel profil mastery dan rekomendasi sulit dibaca cepat oleh guru dan siswa. Lapisan naratif mengubah hasil
+diagnosis menjadi laporan Markdown berbahasa Indonesia: ringkasan kelas untuk guru, umpan balik suportif untuk siswa, dan
+penjelasan rekomendasi intervensi.
+
+**Pembagian peran (tegas).**
+
+| Komponen | Tugas | Tidak boleh |
+|---|---|---|
+| P-DINA (`models.py`, `diagnosis.py`, `intervention.py`) | menghitung probabilitas mastery, label, learning gap, prioritas, rekomendasi R1–R5 | — |
+| SLM (Qwen3-4B-Instruct-2507) | menyusun kalimat dari fakta yang sudah dihitung | menghitung/mengubah angka, memprediksi mastery, menambah konsep, mengklaim intervensi efektif |
+| Validator + template (`narrative.py`) | menolak teks SLM yang tidak berdasar; menyediakan laporan cadangan deterministik | menampilkan teks yang tidak lolos validasi |
+
+**Alur.**
+
+```
+CDMService.diagnose()  ──►  NarrativeFacts (JSON ringkas, ID siswa dipseudonimkan "Siswa-<hash>")
+        ──►  prompt (aturan + heading wajib + 1 contoh)  ──►  SLM lokal via HTTP (Ollama, localhost)
+        ──►  validator ──lolos──►  laporan + cache disk
+                  └──gagal──►  perbaikan (maks. 2×)  ──►  template deterministik (fallback)
+```
+
+* **Fakta yang dikirim**: agregat kelas (≤ 11 konsep target, ≤ 5 gap, ≤ 5 rekomendasi) atau profil satu siswa (≤ 12 konsep).
+  Tidak ada matriks respons, `UserId` asli, nama, atau sekolah.
+* **Validator (hard fail)**: setiap angka harus ada di fakta dan, pada baris yang menyebut konsep, milik konsep itu;
+  heading wajib lengkap; rekomendasi placeholder wajib disebut "perlu validasi guru"; klaim terlarang (*terbukti, dijamin,
+  efektif meningkatkan, siswa malas*, …) ditolak; konsep di luar fakta ditolak; 120–900 kata; tanpa HTML atau daftar bernomor.
+* **Privasi**: default hanya ke `localhost`; server lain ditolak kecuali diizinkan eksplisit (`allow_remote` + env).
+  Audit log (`artifacts/reports/narrative_log.jsonl`) tidak menyimpan teks laporan maupun ID siswa.
+* **Ketahanan**: satu request per laporan, cache disk (kunci = hash fakta + model + versi prompt), circuit breaker setelah 3
+  kegagalan, timeout connect 5 s / baca 120 s. Bila server mati, template muncul dalam ±2 detik — aplikasi tidak crash.
+* **Di aplikasi**: tombol *Buat ringkasan naratif* (Dashboard, Learning Gap Analysis), *Buat feedback siswa* (Student
+  Assessment), *Jelaskan rekomendasi* (Intervention Recommendations). Laporan hanya dibuat saat tombol diklik, ditampilkan
+  dengan nama model, versi prompt, latensi, disclaimer, dan tombol unduh `.md`.
+* **Pemilihan model**: Qwen3-4B-Instruct-2507 (tag Ollama `qwen3:4b-instruct`, Q4_K_M, 2,5 GB) dipilih karena merupakan
+  model terkecil yang diuji yang menulis angka dengan benar (lihat Hasil). Model berjalan di proses Ollama, bukan di
+  Streamlit; aplikasi hanya klien HTTP (`requests`), tanpa `torch`/`transformers`.
+
+Kode: `cdacdm/narrative.py`, `CDMService.generate_narrative()`; konfigurasi: `configs/slm.json`; uji: `tests/test_narrative.py`;
+detail lengkap: `README_slm.md`. Fine-tuning LoRA (Phase 2) baru berupa kerangka skrip dan belum dijalankan.
+
 ## Hasil (dihitung oleh pipeline; lihat `artifacts/`)
 
 Semua angka di bawah berasal dari run notebook `cda_cdm_model_training.ipynb` (24-10-2026, artefak `local_reconstruction`,
@@ -311,11 +358,25 @@ didiagnosis, proporsi gap per konsep 55–80%. *Gradient Between Two Co-ordinate
 **Demo pre/post (SIMULASI, 40 siswa sintetis):** korelasi perubahan P(mastery) terestimasi vs perubahan mastery sebenarnya
 (diketahui karena disimulasikan) = 0,744.
 
+**Lapisan naratif SLM (uji lokal 25-10-2026; 30 siswa demo EEDI; laptop i5-12450H + RTX 2050 4 GB, Ollama):** ini uji
+fungsional kecil (beberapa laporan per model), bukan evaluasi kualitas bahasa yang sistematis.
+
+| Model | Waktu per laporan | Hasil validator |
+|---|---|---|
+| **`qwen3:4b-instruct`** (dipakai) | guru ±80–105 s, siswa ±80 s | lolos pada percobaan pertama, angka benar |
+| `qwen2.5:3b` | ±25 s per percobaan | 4 dari 5 persentase konsep salah/tertukar → ditolak → template |
+| `gemma3:1b` | ±10–40 s | angka dikarang/disalin dari contoh → sebagian besar template |
+
+Saat model Ollama lain ikut memakai GPU 4 GB, `qwen3:4b-instruct` dapat melewati batas 120 detik dan aplikasi menampilkan
+template. Setelah laporan pertama, laporan yang sama diambil dari cache dalam < 1 detik.
+
 ## Status fitur
 
 | Kategori | Fitur |
 |---|---|
 | **Berjalan dengan data EEDI** | audit artefak & leakage; analisis Q-matrix; peta konsep target; training P-DINA + 3 baseline; seleksi hyperparameter & kebijakan di validation; evaluasi test (AUC, accuracy, precision, recall, F1, log-loss, Brier, ECE, kalibrasi, per konsep, bootstrap CI); konsistensi split-half; profil mastery, learning gap & agregasi kelas siswa test; fixed/parallel forms; replay adaptif; inferensi siswa baru/parsial; aplikasi Streamlit |
+| **Opsional, berjalan lokal (butuh Ollama + Qwen3-4B)** | laporan naratif SLM untuk guru, siswa, dan rekomendasi; validator angka/klaim; fallback template; cache & audit log. Tanpa Ollama, tombol yang sama menghasilkan laporan template |
+| **Kerangka saja (belum dijalankan)** | Phase 2 SLM: dataset narasi (draf template, wajib diedit guru), resep QLoRA, harness evaluasi antar-model (`scripts/*narrative*`, `scripts/train_lora.py`) |
 | **Demonstrasi berbasis data sintetis** | analisis pre/post (`artifacts/prepost/SYNTHETIC_*`, halaman Pre/Post mode SIMULASI); simulasi recovery mastery & parameter soal (berlabel *SIMULATION*) |
 | **Placeholder yang wajib diisi/divalidasi** | `configs/intervention_map.csv` (sumber materi, aktivitas, durasi); `prerequisite_concept_ids` & `curriculum_order` di peta konsep (draft); `configs/target_curriculum.csv` (draft topik SMA) |
 | **Baru dapat dipakai setelah data kelas nyata tersedia** | hasil pre/post penelitian (`compare_pre_post` dengan CSV pre & post, ID siswa sama, opsional `group`); validasi model pada siswa SMA; diagnosis topik SMA yang tidak ada di EEDI (butuh soal baru yang dipetakan ke Q-matrix dan dikalibrasi); evaluasi efektivitas intervensi (butuh desain dengan kelompok pembanding) |
@@ -328,3 +389,9 @@ didiagnosis, proporsi gap per konsep 55–80%. *Gradient Between Two Co-ordinate
 * Q-logistic kompensatori sedikit lebih unggul AUC-nya dibanding P-DINA (lihat hasil); P-DINA dipertahankan karena kalibrasinya
   lebih baik dan parameternya langsung bermakna (guess/slip, probabilitas penguasaan) — trade-off ini dilaporkan, tidak disembunyikan.
 * Pre/post tanpa kelompok kontrol = *perubahan yang teramati*, bukan efek kausal.
+* **SLM**: validator menjamin angka berasal dari hasil diagnosis dan sesuai konsepnya, tetapi tidak menjamin seluruh makna
+  kalimat (mis. konsep ditaruh di bagian yang keliru) maupun ketepatan pedagogis. Laporan naratif adalah draf yang perlu
+  ditinjau guru, bukan penilaian resmi.
+* **SLM**: kualitas bahasa baru diuji pada beberapa laporan, belum dievaluasi sistematis (`scripts/eval_narrative.py` tersedia
+  untuk itu) dan belum dinilai oleh guru. Model belum di-fine-tune.
+* **SLM**: pada GPU 4 GB satu laporan butuh ±1,5 menit dan dapat timeout bila GPU dipakai model lain; tanpa GPU akan lebih lambat.
